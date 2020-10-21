@@ -46,6 +46,7 @@
 #include "ui_jammer.hpp"
 #include "ui_keyfob.hpp"
 #include "ui_lcr.hpp"
+#include "ui_looking_glass_app.hpp"
 #include "ui_mictx.hpp"
 #include "ui_morse.hpp"
 //#include "ui_numbers.hpp"
@@ -458,8 +459,9 @@ SystemMenuView::SystemMenuView(NavigationView& nav) {
 		{ "Tools",		ui::Color::cyan(),			&bitmap_icon_utilities,	[&nav](){ nav.push<UtilitiesMenuView>(); } },
 		{ "Options", 	ui::Color::cyan(),			&bitmap_icon_setup,	  	[&nav](){ nav.push<SettingsMenuView>(); } },
 		{ "Debug",		ui::Color::light_grey(),	&bitmap_icon_debug,   	[&nav](){ nav.push<DebugMenuView>(); } },
+		{ "Lookin'Glass",	ui::Color::red(),		&bitmap_icon_search,	[&nav](){ nav.push<GlassView>(); } },
 		{ "HackRF", 	ui::Color::cyan(),			&bitmap_icon_hackrf,	[this, &nav](){ hackrf_mode(nav); } },
-		{ "USB Disk", 	ui::Color::cyan(),			&bitmap_icon_hackrf,	[this, &nav](){ msc_mode(nav); } },
+		//{ "USB Disk", 	ui::Color::cyan(),			&bitmap_icon_hackrf,	[this, &nav](){ msc_mode(nav); } },
 		//{ "About", 		ui::Color::cyan(),			nullptr,				[&nav](){ nav.push<AboutView>(); } }
 	});
 	set_max_rows(2); 	// allow wider buttons
