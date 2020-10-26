@@ -51,32 +51,47 @@
      private:
      	NavigationView& nav_;
 
+        struct preset_entry
+        {
+            rf::Frequency min{};
+            rf::Frequency max{};
+            std::string label{};
+        };
+
+        std::vector<preset_entry> presets_db{};
+
          void on_channel_spectrum(const ChannelSpectrum& spectrum);
          void do_timers();
          void on_range_changed();
          void on_lna_changed(int32_t v_db);
  	    void on_vga_changed(int32_t v_db);
          void add_spectrum_pixel(Color color);
-         void PlotMarker(double pos);
+        void PlotMarker(rf::Frequency pos);
+        void load_Presets();
+        void txtline_process(std::string& line);
+        void populate_Presets();
+        void presets_Default();
 
          rf::Frequency f_min { 0 }, f_max { 0 };
          rf::Frequency search_span { 0 };
          rf::Frequency f_center { 0 };
          rf::Frequency f_center_ini { 0 };
-         double marker_pixel_step { 0 };
-         rf::Frequency each_bin_size { SEARCH_SLICE_WIDTH  / 256 };
+         rf::Frequency marker_pixel_step { 0 };
+         rf::Frequency each_bin_size { SEARCH_SLICE_WIDTH  / 240 };
          rf::Frequency bins_Hz_size { 0 };
-         uint8_t timing_div { 0 };
          uint8_t min_color_power { 0 };
          uint32_t pixel_index { 0 };
          std::array<Color, 240> spectrum_row = { 0 };
          ChannelSpectrumFIFO* fifo { nullptr }; 
+         uint8_t max_power = 0;
 
-         Labels labels {
-             { { 0, 0 }, "MIN:     MAX:     LNA   VGA  ", Color::light_grey() },
-             { { 0, 1 * 16 }, "RANGE:     FILTER:       AMP:", Color::light_grey() },
-             { { 0, 2 * 16 }, "MARKER:     MHz +/-    MHz", Color::light_grey() }
-         };
+        Labels labels{
+            {{0, 0}, "MIN:     MAX:     LNA   VGA  ", Color::light_grey()},
+            {{0, 1 * 16}, " RANGE:     FILTER:      AMP:", Color::light_grey()},
+            {{0, 2 * 16}, "PRESET:", Color::light_grey()},
+            {{0, 3 * 16}, "MARKER:     MHz +/-    MHz", Color::light_grey()}
+
+        };
 
          NumberField field_frequency_min {
              { 4 * 8, 0 * 16 },
@@ -102,42 +117,39 @@
              { 27 * 8, 0 * 16 }
          };
 
-         Text text_range {
-   		    { 6 * 8, 1 * 16, 4 * 8, 16 },
- 		    ""
-         };
+         Text text_range{
+            {7 * 8, 1 * 16, 4 * 8, 16},
+            ""};
 
- 	    OptionsField filter_config {
-             { 18 * 8, 1 * 16 },
-             4,
-             {
-                 { "OFF ", 0 },
-                 { "MID ", 118 }, //85 +25 (110) + a bit more to kill all blue
-                 { "HIGH", 202 }, //168 + 25 (193)
-             }
- 	    };
+        OptionsField filter_config{
+            {19 * 8, 1 * 16},
+            4,
+            {
+                {"OFF ", 0},
+                {"MID ", 118}, //85 +25 (110) + a bit more to kill all blue
+                {"HIGH", 202}, //168 + 25 (193)
+            }};
 
-         RFAmpField field_rf_amp {
-             { 29 * 8, 1 * 16 }
-         };
+        RFAmpField field_rf_amp{
+            {29 * 8, 1 * 16}};
 
-         Text text_marker {
-                 { 8 * 8, 2 * 16, 4 * 8, 16 },
-             ""
-         };
+        OptionsField range_presets{
+            {7 * 8, 2 * 16},
+            20,
+            {
+                {" NONE (WIFI 2.4GHz)", 0},
+            }};
 
-         NumberField field_marker {
-             { 7 * 8, 2 * 16 },
-             4,
-             { 0, 6000 },
-             25,
-             ' '
-         };
+        NumberField field_marker{
+            {7 * 8, 3 * 16},
+            4,
+            {0, 7200},
+            25,
+            ' '};
 
-         Text text_marker_pm {
-                 { 20 * 8, 2 * 16, 2 * 8, 16 },
-             ""
-         };
+        Text text_marker_pm{
+            {20 * 8, 3 * 16, 2 * 8, 16},
+            ""};
 
      MessageHandlerRegistration message_handler_spectrum_config {
  		Message::ID::ChannelSpectrumConfig,
