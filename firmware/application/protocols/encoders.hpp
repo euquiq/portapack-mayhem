@@ -29,10 +29,10 @@
 
 namespace encoders {
 	
-	#define ENC_TYPES_COUNT 14
+	#define ENC_TYPES_COUNT 15
 	#define OOK_SAMPLERATE	2280000U
 	
-	#define ENCODER_UM3750	8
+	#define ENCODER_UM3750	9
 	
 	size_t make_bitstream(std::string& fragments);
 	void bitstream_append(size_t& bitstream_length, uint32_t bit_count, uint32_t bits);
@@ -54,6 +54,19 @@ namespace encoders {
 
 	// Warning ! If this is changed, make sure that ENCODER_UM3750 is still valid !
 	constexpr encoder_def_t encoder_defs[ENC_TYPES_COUNT] = {
+
+		// 8 bit OOK Garage Door LINEAR DELTA 3 DNR00001 DR DR3A Single Channel Gate
+		// as used in the All-O-Matic OH-200 DC Overhead Gate Operator
+ 		{
+ 			"LINEARD3",
+			"01", "01",
+ 			920, 115,
+ 			{ "10000000", "11110000" },
+ 			8,	"AAAAAAAA",
+ 			"",
+ 			285000, 8, // repeat=230, looks like 8 is still working
+ 			70
+ 		},
 		// PT2260-R2
 		{
 			"2260-R2",
