@@ -32,7 +32,7 @@ namespace encoders {
 	#define ENC_TYPES_COUNT 15
 	#define OOK_SAMPLERATE	2280000U
 	
-	#define ENCODER_UM3750	8
+	#define ENCODER_UM3750	9
 	
 	size_t make_bitstream(std::string& fragments);
 	void bitstream_append(size_t& bitstream_length, uint32_t bit_count, uint32_t bits);
