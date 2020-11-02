@@ -207,6 +207,7 @@ void set_serial_format(const serial_format_t new_value) {
 	data->serial_format = new_value;
 }
 
+/* 
 static constexpr uint32_t playdead_magic = 0x88d3bb57;
 
 uint32_t playing_dead() {
@@ -231,31 +232,30 @@ void set_playdead_sequence(const uint32_t new_value) {
 	data->playdead_sequence = new_value;
 	data->playdead_magic = playdead_magic;
 }
-
+ */
 bool config_speaker() {
-	return (data->ui_config & (1 << 27)) ? true : false;
+	return data->ui_config & (1 << 27);
 }
 
 bool config_backbutton() {
-	return (data->ui_config & (1 << 28)) ? true : false;
+	return data->ui_config & (1 << 28);
 }
 
 bool stealth_mode() {
-	return (data->ui_config & (1 << 29)) ? true : false;
+	return data->ui_config & (1 << 29);
 }
 
 bool config_login() {
-	return (data->ui_config & (1 << 30)) ? true : false;
+	return data->ui_config & (1 << 30);
 }
 
 bool config_splash() {
-	return (data->ui_config & (1 << 31)) ? true : false;
+	return data->ui_config & (1 << 31);
 }
 
 uint32_t config_backlight_timer() {
 	const uint32_t timer_seconds[8] = { 0, 5, 15, 30, 60, 180, 300, 600 };
-
-	return timer_seconds[data->ui_config & 0x00000007UL];
+	return timer_seconds[data->ui_config & 7]; //first three bits, 8 possible values
 }
 
 void set_config_speaker(bool v) {
