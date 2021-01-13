@@ -3,6 +3,7 @@ I own a chinese flavored H1 Portapack. This particular fork is finetuned for thi
 This repository is my coding "buffer" before pulling requests into eried/portapack-mayhem repository, which represents at this time and date one of the main efforts (if not the only one) to keep fixing and further developing the HAVOC version, now re-bautized into "MAYHEM"
 
 ## Version highlights
+* My version is H1 (clone) centered: It includes a sensitivity selector for the touchscreen, and understands the difference between the headphones and speaker outputs (You should install a speaker!). Also, it does NOT include any enhancement from Mayhem that -according to my sometimes subjective criteria- goes against the overall good functioning of the device. 
 
 * Two new checkboxes on OPTIONS -> UI menu:
 
