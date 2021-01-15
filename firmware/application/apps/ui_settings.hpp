@@ -114,6 +114,7 @@ private:
 
 struct SetFrequencyCorrectionModel {
 	int8_t ppm;
+	uint32_t freq;
 };
 
 class SetRadioView : public View {
@@ -125,6 +126,9 @@ public:
 	std::string title() const override { return "Radio Options"; };
 
 private:
+
+	uint8_t freq_step_khz = 3;
+
 	const Style style_text {
 		.font = font::fixed_8x16,
 		.background = Color::black(),
@@ -147,9 +151,32 @@ private:
 	};
 
 	Labels labels_correction {
-		{ { 2 * 8, 4 * 16 }, "Frequency correction:", Color::light_grey() },
-		{ { 6 * 8, 5 * 16 }, "PPM", Color::light_grey() },
+		{ { 2 * 8, 3 * 16 }, "Frequency correction:", Color::light_grey() },
+		{ { 6 * 8, 4 * 16 }, "PPM", Color::light_grey() },
 	};
+
+	Checkbox check_clkout {
+ 		{ 18, (6 * 16 - 4) },
+ 		13,
+ 		"Enable CLKOUT"
+ 	};
+
+ 	NumberField field_clkout_freq {
+ 		{ 20 * 8, 6 * 16 },
+ 		5,
+ 		{ 10, 60000 },
+ 		1000,
+ 		' '
+ 	};
+
+ 	Labels labels_clkout_khz {
+ 		{ { 26 * 8, 6 * 16 }, "kHz", Color::light_grey() }
+ 	};
+
+ 	Text value_freq_step {
+ 		{ 21 * 8, (7 * 16 ), 4 * 8, 16 },
+ 		"|   "
+ 	};
 
 	Labels labels_bias {
 		{ { 24, 8 * 16 }, "CAUTION: Ensure that all", Color::red() },
@@ -159,7 +186,7 @@ private:
 	};
 
 	NumberField field_ppm {
-		{ 2 * 8, 5 * 16 },
+		{ 2 * 8, 4 * 16 },
 		3,
 		{ -50, 50 },
 		1,

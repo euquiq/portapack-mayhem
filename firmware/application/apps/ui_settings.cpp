@@ -143,6 +143,10 @@ SetRadioView::SetRadioView(NavigationView& nav) {
 	}
 
 	add_children({
+		&check_clkout,
+		&field_clkout_freq,
+ 		&labels_clkout_khz,
+ 		&value_freq_step,
 		&labels_bias,
 		&check_bias,
 		&button_done,
@@ -155,6 +159,40 @@ SetRadioView::SetRadioView(NavigationView& nav) {
 
 	form_init(model);
 
+	check_clkout.set_value(portapack::persistent_memory::clkout_enabled());
+ 	check_clkout.on_select = [this](Checkbox&, bool v) {
+ 		clock_manager.enable_clock_output(v);
+ 		portapack::persistent_memory::set_clkout_enabled(v);
+ 		StatusRefreshMessage message { };
+ 		EventDispatcher::send_message(message);
+ 	};
+
+	field_clkout_freq.set_value(portapack::persistent_memory::clkout_freq());
+ 	value_freq_step.set_style(&style_text);
+
+ 	field_clkout_freq.on_select = [this](NumberField&) {
+ 		freq_step_khz++;
+ 		if(freq_step_khz > 3)
+  			freq_step_khz = 0;
+
+ 		switch(freq_step_khz) {
+ 			case 0:
+ 				value_freq_step.set("   |");
+ 				break;
+ 			case 1:
+ 				value_freq_step.set("  | ");
+ 				break;
+ 			case 2:
+ 				value_freq_step.set(" |  ");
+ 				break;
+ 			case 3:
+ 				value_freq_step.set("|   ");
+ 				break;
+ 		}
+ 		field_clkout_freq.set_step(pow(10, freq_step_khz));
+ 	};
+ 
+
 	check_bias.set_value(portapack::get_antenna_bias());
 	check_bias.on_select = [this](Checkbox&, bool v) {
 		portapack::set_antenna_bias(v);
@@ -165,6 +203,8 @@ SetRadioView::SetRadioView(NavigationView& nav) {
 	button_done.on_select = [this, &nav](Button&){
 		const auto model = this->form_collect();
 		portapack::persistent_memory::set_correction_ppb(model.ppm * 1000);
+		portapack::persistent_memory::set_clkout_freq(model.freq);
+ 		clock_manager.enable_clock_output(portapack::persistent_memory::clkout_enabled());
 		nav.pop();
 	};
 }
@@ -180,62 +220,10 @@ void SetRadioView::form_init(const SetFrequencyCorrectionModel& model) {
 SetFrequencyCorrectionModel SetRadioView::form_collect() {
 	return {
 		.ppm = static_cast<int8_t>(field_ppm.value()),
+		.freq = static_cast<uint32_t>(field_clkout_freq.value()),
 	};
 }
 
-/*
-SetPlayDeadView::SetPlayDeadView(NavigationView& nav) {
-	add_children({
-		&text_sequence,
-		&button_enter,
-		&button_cancel
-	});
-
-	button_enter.on_select = [this, &nav](Button&){
-		if (!entermode) {
-			sequence = 0;
-			keycount = 0;
-			memset(sequence_txt, '-', 10);
-			text_sequence.set(sequence_txt);
-			entermode = true;
-			button_cancel.hidden(true);
-			set_dirty();
-		} else {
-			if (sequence == 0x8D1)	// U D L R
-				nav.display_modal("Warning", "Default sequence entered !", ABORT, nullptr);
-			else {
-				persistent_memory::set_playdead_sequence(sequence);
-				nav.pop();
-			}
-		}
-	};
-	
-	button_enter.on_dir = [this](Button&, KeyEvent key){
-		if ((entermode == true) && (keycount < 10)) {
-			key_code = static_cast<std::underlying_type<KeyEvent>::type>(key);
-			if (key_code == 0)
-				sequence_txt[keycount] = 'R';
-			else if (key_code == 1)
-				sequence_txt[keycount] = 'L';
-			else if (key_code == 2)
-				sequence_txt[keycount] = 'D';
-			else if (key_code == 3)
-				sequence_txt[keycount] = 'U';
-			text_sequence.set(sequence_txt);
-			sequence = (sequence << 3) | (key_code + 1);
-			keycount++;
-			return true;
-		}
-		return false;
-	};
-	
-	button_cancel.on_select = [&nav](Button&){ nav.pop(); };
-}
-
-void SetPlayDeadView::focus() {
-	button_cancel.focus();
-}
-*/
 
 SetUIView::SetUIView(NavigationView& nav) {
 	add_children({

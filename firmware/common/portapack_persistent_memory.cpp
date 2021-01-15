@@ -67,6 +67,10 @@ using touch_threshold_range_t = range_t<float_t>;
  constexpr touch_threshold_range_t touch_threshold_range { 320, 640 };
  constexpr float_t touch_threshold_reset_value { 640 };
 
+ using clkout_freq_range_t = range_t<uint32_t>;
+ constexpr clkout_freq_range_t clkout_freq_range { 10, 60000 };
+ constexpr uint32_t clkout_freq_reset_value { 10000 };
+
 /* struct must pack the same way on M4 and M0 cores. */
 struct data_t {
 	int64_t tuned_frequency;
@@ -207,33 +211,11 @@ void set_serial_format(const serial_format_t new_value) {
 	data->serial_format = new_value;
 }
 
-/* 
-static constexpr uint32_t playdead_magic = 0x88d3bb57;
-
-uint32_t playing_dead() {
-	return data->playing_dead;
-}
-
-void set_playing_dead(const uint32_t new_value) {
-	if( data->playdead_magic != playdead_magic ) {
-		set_playdead_sequence(0x8D1);	// U D L R
-	}
-	data->playing_dead = new_value;
-}
-
-uint32_t playdead_sequence() {
-	if( data->playdead_magic != playdead_magic ) {
-		set_playdead_sequence(0x8D1);	// U D L R
-	}
-	return data->playdead_sequence;
-}
-
-void set_playdead_sequence(const uint32_t new_value) {
-	data->playdead_sequence = new_value;
-	data->playdead_magic = playdead_magic;
-}
- */
 bool config_speaker() {
+	return data->ui_config & (1 << 26);
+}
+
+bool clkout_enabled() {
 	return data->ui_config & (1 << 27);
 }
 
@@ -258,8 +240,27 @@ uint32_t config_backlight_timer() {
 	return timer_seconds[data->ui_config & 7]; //first three bits, 8 possible values
 }
 
+uint32_t clkout_freq() {
+ 	uint16_t freq = (data->ui_config & 0x000FFFF0) >> 4;
+ 	if(freq < clkout_freq_range.minimum || freq > clkout_freq_range.maximum) {
+ 		data->ui_config = (data->ui_config & ~0x000FFFF0) | clkout_freq_reset_value << 4;
+ 		return clkout_freq_reset_value;
+ 	}
+ 	else {
+ 		return freq;
+ 	}
+ }
+
+ void set_clkout_freq(uint32_t freq) {
+ 	data->ui_config = (data->ui_config & ~0x000FFFF0) | (clkout_freq_range.clip(freq) << 4);
+ }
+
 void set_config_speaker(bool v) {
-	data->ui_config = (data->ui_config & ~(1 << 27)) | (v << 27); 
+	data->ui_config = (data->ui_config & ~(1 << 26)) | (v << 26); 
+}
+
+void set_clkout_enabled(bool v) {
+	data->ui_config = (data->ui_config & ~(1 << 27)) | (v << 27);
 }
 
 void set_config_backbutton(bool v) {
@@ -281,18 +282,6 @@ void set_config_splash(bool v) {
 void set_config_backlight_timer(uint32_t i) {
 	data->ui_config = (data->ui_config & ~0x00000007UL) | (i & 7);
 }
-
-/*void set_config_textentry(uint8_t new_value) {
-	data->ui_config = (data->ui_config & ~0b100) | ((new_value & 1) << 2);
-}
-
-uint8_t ui_config_textentry() {
-	return ((data->ui_config >> 2) & 1);
-}*/
-
-/*void set_ui_config(const uint32_t new_value) {
-	data->ui_config = new_value;
-}*/
 
 uint32_t pocsag_last_address() {
 	return data->pocsag_last_address;

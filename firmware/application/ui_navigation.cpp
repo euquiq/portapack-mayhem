@@ -114,7 +114,7 @@ SystemStatusView::SystemStatusView(
 		&button_camera,
 		&button_sleep,
 		&button_bias_tee,
-		&image_clock_status,
+		&button_clock_status,
 		&sd_card_status_view,
 	});
 	
@@ -156,6 +156,10 @@ SystemStatusView::SystemStatusView(
 		DisplaySleepMessage message;
 		EventDispatcher::send_message(message);
 	};
+
+	button_clock_status.on_select = [this](ImageButton&) {
+ 		this->on_clk();
+ 	};
 }
 
 void SystemStatusView::refresh() {
@@ -175,11 +179,17 @@ void SystemStatusView::refresh() {
 	}
 	
 	if (portapack::clock_manager.get_reference().source == ClockManager::ReferenceSource::External) {
-		image_clock_status.set_bitmap(&bitmap_icon_clk_ext);
-		button_bias_tee.set_foreground(ui::Color::green());
+		button_clock_status.set_bitmap(&bitmap_icon_clk_ext);
+ //		button_bias_tee.set_foreground(ui::Color::green());   Typo?
 	} else {
-		image_clock_status.set_bitmap(&bitmap_icon_clk_int);
-		button_bias_tee.set_foreground(ui::Color::light_grey());
+		button_clock_status.set_bitmap(&bitmap_icon_clk_int);
+ //		button_bias_tee.set_foreground(ui::Color::green());
+ 	}
+
+ 	if(portapack::persistent_memory::clkout_enabled()) {
+ 		button_clock_status.set_foreground(ui::Color::green());
+ 	} else {
+ 		button_clock_status.set_foreground(ui::Color::light_grey());
 	}
 	
 	set_dirty();
@@ -261,6 +271,14 @@ void SystemStatusView::on_camera() {
 		png.write_scanline(row);
 	}
 }
+
+ void SystemStatusView::on_clk() {
+ 	bool v = !portapack::persistent_memory::clkout_enabled();
+ 	portapack::clock_manager.enable_clock_output(v);
+ 	portapack::persistent_memory::set_clkout_enabled(v);
+ 	refresh();
+ }
+
 
 /* Navigation ************************************************************/
 
