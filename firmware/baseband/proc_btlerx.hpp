@@ -55,7 +55,7 @@ private:
 		dst.size()
 	};
 
-        std::array<complex16_t, 512> spectrum { };
+    std::array<complex16_t, 512> spectrum { };
 	const buffer_c16_t spectrum_buffer {
 		spectrum.data(),
 		spectrum.size()
@@ -86,7 +86,7 @@ private:
 
 	bool configured { false };
 
-	
+	bool get_bit(int16_t rb_buf_index);
 	void configure(const BTLERxConfigureMessage& message);
 	
 	AFSKDataMessage data_message { false, 0 };
