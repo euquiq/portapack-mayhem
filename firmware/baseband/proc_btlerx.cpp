@@ -21,16 +21,46 @@
  * Boston, MA 02110-1301, USA.
  */
 
+//	Note from euquiq: This code, when introduced in Portapack, was taken from:
+// https://github.com/DesignSparkrs/sdr-ble-demo/blob/master/references/NRF24-BTLE-Decoder/nrf24-btle-decoder.c
+
 #include "proc_btlerx.hpp"
 #include "portapack_shared_memory.hpp"
 
 #include "event_m4.hpp"
 
-//Given a raw RX value from rb_buf, determines bit
-bool BTLERxProcessor::get_bit(int16_t index)
+//Given a raw RX value from rb_buf, determines bit (Quantize)
+bool BTLERxProcessor::get_bit(uint16_t index)
 {
 	return rb_buf[(rb_head + index) % RB_SIZE] > g_threshold;
 }
+
+//BTLE transmits the bits in reversed order
+uint8_t BTLERxProcessor::SwapBits(uint8_t a)
+{
+	return (uint8_t) (((a * 0x0802LU & 0x22110LU) | (a * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
+}
+
+//Whiten (descramble) BTLE packet using channel value. Whitening is applied to the payload and the CRC
+void BTLERxProcessor::BTLEWhiten(uint8_t* data, uint8_t len, uint8_t chan)
+{
+	uint8_t  i;
+	uint8_t lfsr = SwapBits(chan) | 2;
+	while(len--)
+	{
+		for(i = 0x80; i; i >>= 1)
+		{
+			if(lfsr & 0x80)
+			{
+				lfsr ^= 0x11;
+				(*data) ^= i;
+			}
+			lfsr <<= 1;
+		}
+		data++;
+	}
+}
+
 
 void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 {
@@ -46,7 +76,6 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 	// Audio signal processing
 	for (size_t c = 0; c < audio_oversampled.count; c++)
 	{
-
 		rb_head = (++rb_head) % RB_SIZE;		  //rb_head value goes through a circular pattern of 0 - 999 (RB_SIZE = 1000)
 		rb_buf[rb_head] = audio_oversampled.p[c]; //if I directly use this, some results can pass crc but not correct.
 
@@ -60,8 +89,8 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 			g_threshold = g_threshold / 8;
 
 			//Verify this byte is a preamble: Counting the transitions from bit 1 to 0 (or viceversa)
-			uint8_t transitions = 0;
-			for (int c = 0; c < 7; c++)
+			uint8_t transitions = 0; //Need to count 8 transitions (7 for first byte and one more transitioning against first bit of next byte)
+			for (int c = 0; c < 8; c++)
 			{
 				if (get_bit(c) != get_bit(c + 1))
 				{
@@ -69,11 +98,10 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 				}
 			}
 
-			bool packet_detected = false;
-			//If we get 7 transitions, then this first byte is a preamble byte.
-			if (transitions == 7)
+			bool packet_detected = false;	
+			if (transitions == 8) //This first byte is a preamble byte.
 			{
-				uint8_t packet_data[500];
+				uint8_t packet_data[260];
 				int packet_length;
 				uint32_t packet_crc;
 				uint32_t calced_crc;
@@ -81,201 +109,64 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 				uint8_t crc[3];
 				uint8_t packet_header_arr[2];
 
-				//Extract the BT LE Access Address (For all advertising packet is uses fixed pattern "0x8E89BED6")
-				// packet_addr_l = 0;
-				// for (int i = 0; i < 4; i++)
-				// {
-				// 	bool current_bit;
-				// 	uint8_t byte = 0;
-				// 	for (int c = 0; c < 8; c++)
-				// 	{
-				// 		current_bit = get_bit((i + 1) * 8 + c);
-				// 		byte |= current_bit << (7 - c);
-				// 	}
-				// 	uint8_t byte_temp = (uint8_t)(((byte * 0x0802LU & 0x22110LU) | (byte * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-				// 	packet_addr_l |= ((uint64_t)byte_temp) << (8 * i);
-				// }
-
-				packet_addr_l=0;
-				for (int i=0;i<4;i++) 
-				{                   
-				    bool current_bit;
-				    uint8_t byte=0;
-				    for (int c=0;c<8;c++)
-				    {
-				        if (rb_buf[(rb_head + (i+1)*8 + c)%RB_SIZE] > g_threshold)
-				            current_bit = true;
-				        else
-				            current_bit = false;
-				        byte |= current_bit << (7-c);
-				    }
-				    uint8_t byte_temp = (uint8_t) (((byte * 0x0802LU & 0x22110LU) | (byte * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-				    packet_addr_l|=((uint64_t)byte_temp)<<(8*i);
-				}
-
-				channel_number = 38; //Advertising packets can be TXed thru channels 37, 38, 39
-
-				//Get packet header (2 bytes) First 4 msb bits determine the PDU type
-				//For basic bt (present in all bt versions) 0000 ADV_IND  0001 ADV_DIRECT_IND 0010 ADV_NONCONN_IND 0110 ADV_SCAN_IND
-				// for (int t = 0; t < 2; t++)
-				// {
-				// 	bool current_bit;
-				// 	uint8_t byte = 0;
-				// 	for (int c = 0; c < 8; c++)
-				// 	{
-				// 		current_bit = get_bit(5 * 8 + t * 8 + c);
-				// 		byte |=  current_bit << (7 - c);
-				// 	}
-				// 	packet_header_arr[t] = byte;
-				// }
-
-				for (int t=0;t<2;t++)
+				//Extract the BT LE Access Address (4 bytes)
+				packet_addr_l = 0;				
+				for (int i = 0; i < 4; i++)
 				{
-				    bool current_bit;
-				    uint8_t byte=0;
-				    for (int c=0;c<8;c++)
-				    {
-				        if (rb_buf[(rb_head + 5*8+t*8 + c)%RB_SIZE] > g_threshold)
-				            current_bit = true;
-				        else
-				            current_bit = false;
-				        byte |= current_bit << (7-c);
-				    }
+					uint8_t byte = 0;
+					for (int c = 0; c < 8; c++) 
+						byte |= get_bit(8 + (i * 8) + c) << (7 - c);  //Access starts in rb_head + 8, 4 bytes
 
-				    packet_header_arr[t] = byte;
+					packet_addr_l |= ((uint64_t)SwapBits(byte)) << (8 * i);
 				}
 
-				uint8_t byte_temp2 = (uint8_t)(((channel_number * 0x0802LU & 0x22110LU) | (channel_number * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-				uint8_t lfsr_1 = byte_temp2 | 2;
-				int header_length = 2;
-				int header_counter = 0;
-				while (header_length--)
-				{
-					for (uint8_t i = 0x80; i; i >>= 1)
-					{
-						if (lfsr_1 & 0x80)
-						{
-							lfsr_1 ^= 0x11;
-							(packet_header_arr[header_counter]) ^= i;
-						}
-						lfsr_1 <<= 1;
-					}
-					header_counter = header_counter + 1;
-				}
-
+				//Only process advertizing packets (uses fixed pattern "0x8E89BED6")
 				if (packet_addr_l == 0x8E89BED6)
 				{
-					uint8_t byte_temp3 = (uint8_t)(((packet_header_arr[1] * 0x0802LU & 0x22110LU) | (packet_header_arr[1] * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-					packet_length = byte_temp3 & 0x3F;
-				}
-				else
-				{
-					packet_length = 0;
-				}
-
-				// for (int t = 0; t < packet_length + 2 + 3; t++)
-				// {
-				// 	bool current_bit;
-				// 	uint8_t byte = 0;
-				// 	for (int c = 0; c < 8; c++)
-				// 	{
-				// 		current_bit = get_bit(5 * 8 + t * 8 + c);
-				// 		byte |= current_bit << (7 - c);
-				// 	}					
-				// 	packet_data[t] = byte;
-				// }
-
-				for (int t=0;t<packet_length+2+3;t++)
-				{
-				    bool current_bit;
-				    uint8_t byte=0;
-				    for (int c=0;c<8;c++)
-				    {
-				        if (rb_buf[(rb_head + 5*8+t*8 + c)%RB_SIZE] > g_threshold)
-				            current_bit = true;
-				        else
-				            current_bit = false;
-				        byte |= current_bit << (7-c);
-				    }
-
-				    packet_data[t] = byte;
-				}
-
-				uint8_t byte_temp4 = (uint8_t)(((channel_number * 0x0802LU & 0x22110LU) | (channel_number * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-				uint8_t lfsr_2 = byte_temp4 | 2;
-				int pdu_crc_length = packet_length + 2 + 3;
-				int pdu_crc_counter = 0;
-				while (pdu_crc_length--)
-				{
-					for (uint8_t i = 0x80; i; i >>= 1)
+					//Get PDU HEADER (2 bytes) First 4 msb bits determine the PDU type
+					//Header is: 4 bits for PDU type (see above), 1 bit for RFU, 1 bit for ChSel, 1 bit for TxAdd, 1 bit for RX Add and 8 bits FOR PACKET LENGTH
+					//For basic bt (present in all bt versions) 0000 ADV_IND  0001 ADV_DIRECT_IND 0010 ADV_NONCONN_IND 0110 ADV_SCAN_IND
+					
+					for (int t = 0; t < 2; t++)
 					{
-						if (lfsr_2 & 0x80)
-						{
-							lfsr_2 ^= 0x11;
-							(packet_data[pdu_crc_counter]) ^= i;
-						}
-						lfsr_2 <<= 1;
+						uint8_t byte = 0;
+						for (int c = 0; c < 8; c++)
+							byte |=  get_bit(40 + (t * 8) + c) << (7 - c);  //PDU HEADER starts in rb_head + (8 * 5) (1 byte Preamble + 4 bytes Address, 40 bits)
+
+						packet_header_arr[t] = byte;
 					}
-					pdu_crc_counter = pdu_crc_counter + 1;
-				}
 
-				if (packet_addr_l == 0x8E89BED6)
-				{
-					crc[0] = crc[1] = crc[2] = 0x55;
-				}
-				else
-				{
-					crc[0] = crc[1] = crc[2] = 0;
-				}
-
-				uint8_t v, t, d, crc_length;
-				uint32_t crc_result = 0;
-				crc_length = packet_length + 2;
-				int counter = 0;
-				while (crc_length--)
-				{
-					uint8_t byte_temp5 = (uint8_t)(((packet_data[counter] * 0x0802LU & 0x22110LU) | (packet_data[counter] * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-					d = byte_temp5;
-					for (v = 0; v < 8; v++, d >>= 1)
+					BTLEWhiten(packet_header_arr, 2, 38); //Clear whitening on packet header. Advertising packets can be TXed thru channels 37, 38, 39
+					packet_length = SwapBits(packet_header_arr[1]) & 0x3F;  //... So we can get the PAYLOAD LENGTH
+					
+					//PDU, PAYLOAD: Get the packet DATA 
+					for (int t = 0; t < packet_length + 2 + 3; t++) //3 bytes for CRC are just after the payload
 					{
-						t = crc[0] >> 7;
-						crc[0] <<= 1;
-						if (crc[1] & 0x80)
-							crc[0] |= 1;
-						crc[1] <<= 1;
-						if (crc[2] & 0x80)
-							crc[1] |= 1;
-						crc[2] <<= 1;
-						if (t != (d & 1))
-						{
-							crc[2] ^= 0x5B;
-							crc[1] ^= 0x06;
-						}
+						uint8_t byte = 0;
+						for (int c = 0; c < 8; c++)
+							byte |= get_bit(40 + (t * 8) + c) << (7 - c); //Now get the whole PDU PAYLOAD
+
+						packet_data[t] = byte;
 					}
-					counter = counter + 1;
-				}
-				for (v = 0; v < 3; v++)
-					crc_result = (crc_result << 8) | crc[v];
-				calced_crc = crc_result;
 
-				packet_crc = 0;
-				for (int c = 0; c < 3; c++)
-					packet_crc = (packet_crc << 8) | packet_data[packet_length + 2 + c];
+					BTLEWhiten(packet_data, packet_length + 2 + 3, 38); //DATA UNWHITENING to entire PAYLOAD
 
-				if (packet_addr_l == 0x8E89BED6)
-				{
+					//PDU - PAYLOAD DATA: bytes 2 to 7 of ADVERTISER PDU used for BLUETOOTH DEVICE ADDRESS (BDA) like MAC address, stored in "little endian", backwards
 					uint8_t mac_data[6];
-					int counter = 0;
-					for (int i = 7; i >= 2; i--)
-					{
-						uint8_t byte_temp6 = (uint8_t)(((packet_data[i] * 0x0802LU & 0x22110LU) | (packet_data[i] * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
-						mac_data[counter] = byte_temp6;
-						counter = counter + 1;
-					}
+					for (int i = 7; i >=2; i--)
+						mac_data[7-i] = SwapBits(packet_data[i]);
+
 
 					data_message.is_data = false;
 					data_message.value = 'A';
 					shared_memory.application_queue.push(data_message);
+
+					// for (int t = 2; t < packet_length + 2; t++)
+					// {
+					// data_message.is_data = true;
+					// data_message.value = SwapBits(packet_data[t]);
+					// shared_memory.application_queue.push(data_message);
+					// }
 
 					data_message.is_data = true;
 					data_message.value = mac_data[0];
@@ -301,11 +192,16 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 					data_message.value = mac_data[5];
 					shared_memory.application_queue.push(data_message);
 
+					data_message.is_data = true;
+					data_message.value = packet_length;
+					shared_memory.application_queue.push(data_message);
+
 					data_message.is_data = false;
 					data_message.value = 'B';
 					shared_memory.application_queue.push(data_message);
 
 					packet_detected = true;
+
 				}
 				else
 					packet_detected = false;

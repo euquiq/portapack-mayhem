@@ -80,13 +80,14 @@ private:
 	dsp::demodulate::FM demod { };
 	int rb_head {-1};
 	int32_t g_threshold {0};  
-	uint8_t channel_number {38};
 	int skipSamples {1000};
 	int RB_SIZE {1000};
 
 	bool configured { false };
 
-	bool get_bit(int16_t rb_buf_index);
+	bool get_bit(uint16_t rb_buf_index);
+	uint8_t SwapBits(uint8_t a);
+	void BTLEWhiten(uint8_t* data, uint8_t len, uint8_t chan);
 	void configure(const BTLERxConfigureMessage& message);
 	
 	AFSKDataMessage data_message { false, 0 };
