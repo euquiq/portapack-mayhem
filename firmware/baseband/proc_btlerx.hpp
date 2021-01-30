@@ -88,6 +88,7 @@ private:
 	bool get_bit(uint16_t rb_buf_index);
 	uint8_t SwapBits(uint8_t a);
 	void BTLEWhiten(uint8_t* data, uint8_t len, uint8_t chan);
+	uint32_t BTLECrc(const uint8_t* data, uint8_t len, uint8_t* dst);
 	void configure(const BTLERxConfigureMessage& message);
 	
 	AFSKDataMessage data_message { false, 0 };

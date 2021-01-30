@@ -2,6 +2,7 @@
  * Copyright (C) 2015 Jared Boone, ShareBrained Technology, Inc.
  * Copyright (C) 2016 Furrtek
  * Copyright (C) 2020 Shao
+ * Copyright (C) 2021 We The People ...
  *
  * This file is part of PortaPack.
  *
@@ -61,6 +62,37 @@ void BTLERxProcessor::BTLEWhiten(uint8_t* data, uint8_t len, uint8_t chan)
 	}
 }
 
+//Calcualte custom CRC24 for BTLE
+uint32_t BTLERxProcessor::BTLECrc(const uint8_t *data, uint8_t len, uint8_t *dst)
+{
+	uint8_t v, t, d;
+	uint32_t crc = 0;
+	while (len--)
+	{
+		d = SwapBits(*data++);
+		for (v = 0; v < 8; v++, d >>= 1)
+		{
+			t = dst[0] >> 7;
+
+			dst[0] <<= 1;
+			if (dst[1] & 0x80)
+				dst[0] |= 1;
+			dst[1] <<= 1;
+			if (dst[2] & 0x80)
+				dst[1] |= 1;
+			dst[2] <<= 1;
+
+			if (t != (d & 1))
+			{
+				dst[2] ^= 0x5B;
+				dst[1] ^= 0x06;
+			}
+		}
+	}
+	for (v = 0; v < 3; v++)
+		crc = (crc << 8) | dst[v];
+	return crc;
+}
 
 void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 {
@@ -109,7 +141,7 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 				uint8_t crc[3];
 				uint8_t packet_header_arr[2];
 
-				//Extract the BT LE Access Address (4 bytes)
+				//GET BT LE Access Address (4 bytes)
 				packet_addr_l = 0;				
 				for (int i = 0; i < 4; i++)
 				{
@@ -129,15 +161,15 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 					
 					for (int t = 0; t < 2; t++)
 					{
-						uint8_t byte = 0;
+						//uint8_t byte = 0;
 						for (int c = 0; c < 8; c++)
-							byte |=  get_bit(40 + (t * 8) + c) << (7 - c);  //PDU HEADER starts in rb_head + (8 * 5) (1 byte Preamble + 4 bytes Address, 40 bits)
+							packet_header_arr[t] |=  get_bit(40 + (t * 8) + c) << (7 - c);  //PDU HEADER starts in rb_head + (8 * 5) (1 byte Preamble + 4 bytes Address, 40 bits)
 
-						packet_header_arr[t] = byte;
+						//packet_header_arr[t] = byte;
 					}
 
 					BTLEWhiten(packet_header_arr, 2, 38); //Clear whitening on packet header. Advertising packets can be TXed thru channels 37, 38, 39
-					packet_length = SwapBits(packet_header_arr[1]) & 0x3F;  //... So we can get the PAYLOAD LENGTH
+					packet_length = SwapBits(packet_header_arr[1]); // & 0x3F;  //... So we can get the PAYLOAD LENGTH. This might be WRONG ? ble 5.x uses all 8 bits
 					
 					//PDU, PAYLOAD: Get the packet DATA 
 					for (int t = 0; t < packet_length + 2 + 3; t++) //3 bytes for CRC are just after the payload
@@ -151,56 +183,66 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 
 					BTLEWhiten(packet_data, packet_length + 2 + 3, 38); //DATA UNWHITENING to entire PAYLOAD
 
-					//PDU - PAYLOAD DATA: bytes 2 to 7 of ADVERTISER PDU used for BLUETOOTH DEVICE ADDRESS (BDA) like MAC address, stored in "little endian", backwards
-					uint8_t mac_data[6];
-					for (int i = 7; i >=2; i--)
-						mac_data[7-i] = SwapBits(packet_data[i]);
+					//CRC CALCULATION
+					crc[0] = crc[1] = crc[2] = 0x55; //ADvertisement packet checks into these values.
+					calced_crc = BTLECrc(packet_data, packet_length + 2, crc);
+					packet_crc = 0;
+					for (c = 0; c < 3; c++)
+						packet_crc = (packet_crc << 8) | packet_data[packet_length + 2 + c];
+
+					//Confirmed adv packet thru CRC:
+					if (packet_crc == calced_crc){
+						//PDU - PAYLOAD DATA: bytes 2 to 7 of ADVERTISER PDU used for BLUETOOTH DEVICE ADDRESS (BDA) like MAC address, stored in "little endian", backwards
+						uint8_t mac_data[6];
+						for (int i = 7; i >=2; i--)
+							mac_data[7-i] = SwapBits(packet_data[i]);
 
 
-					data_message.is_data = false;
-					data_message.value = 'A';
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = false;
+						data_message.value = 'A';
+						shared_memory.application_queue.push(data_message);
 
-					// for (int t = 2; t < packet_length + 2; t++)
-					// {
-					// data_message.is_data = true;
-					// data_message.value = SwapBits(packet_data[t]);
-					// shared_memory.application_queue.push(data_message);
-					// }
+						// for (int t = 2; t < packet_length + 2; t++)
+						// {
+						// data_message.is_data = true;
+						// data_message.value = SwapBits(packet_data[t]);
+						// shared_memory.application_queue.push(data_message);
+						// }
 
-					data_message.is_data = true;
-					data_message.value = mac_data[0];
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = mac_data[0];
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = true;
-					data_message.value = mac_data[1];
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = mac_data[1];
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = true;
-					data_message.value = mac_data[2];
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = mac_data[2];
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = true;
-					data_message.value = mac_data[3];
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = mac_data[3];
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = true;
-					data_message.value = mac_data[4];
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = mac_data[4];
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = true;
-					data_message.value = mac_data[5];
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = mac_data[5];
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = true;
-					data_message.value = packet_length;
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = true;
+						data_message.value = packet_length;
+						shared_memory.application_queue.push(data_message);
 
-					data_message.is_data = false;
-					data_message.value = 'B';
-					shared_memory.application_queue.push(data_message);
+						data_message.is_data = false;
+						data_message.value = 'B';
+						shared_memory.application_queue.push(data_message);
 
-					packet_detected = true;
+						packet_detected = true;
+					}
 
 				}
 				else
