@@ -42,7 +42,7 @@ uint8_t BTLERxProcessor::SwapBits(uint8_t a)
 	return (uint8_t) (((a * 0x0802LU & 0x22110LU) | (a * 0x8020LU & 0x88440LU)) * 0x10101LU >> 16);
 }
 
-//Whiten (descramble) BTLE packet using channel value. Whitening is applied to the payload and the CRC
+//Un-Whiten (descramble) BTLE packet using channel value. Whitening is applied to the payload and the CRC
 void BTLERxProcessor::BTLEWhiten(uint8_t* data, uint8_t len, uint8_t chan)
 {
 	uint8_t  i;
@@ -62,7 +62,7 @@ void BTLERxProcessor::BTLEWhiten(uint8_t* data, uint8_t len, uint8_t chan)
 	}
 }
 
-//Calcualte custom CRC24 for BTLE
+//Calcualte CHKSUM CRC24 for BTLE
 uint32_t BTLERxProcessor::BTLECrc(const uint8_t *data, uint8_t len, uint8_t *dst)
 {
 	uint8_t v, t, d;
@@ -113,21 +113,18 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 
 		if (--skipSamples < 1)
 		{
-			//Start searching for a valid preamble (01010101 or 10101010)
-			g_threshold = 0; //Asuming a preamble, we calculate the mid-value, safest for differentiating bit 1 from 0
-			for (int c = 0; c < 8; c++)
-				g_threshold += rb_buf[(rb_head + c) % RB_SIZE];
+			//PREAMBLE (01010101 or 10101010)
+			g_threshold = 0; //Asuming a preamble, calculate mid-value, separating bit 1 from 0
+			for (int z = 0; z < 8; z++)
+				g_threshold += rb_buf[(rb_head + z) % RB_SIZE];
 
 			g_threshold = g_threshold / 8;
 
-			//Verify this byte is a preamble: Counting the transitions from bit 1 to 0 (or viceversa)
-			uint8_t transitions = 0; //Need to count 8 transitions (7 for first byte and one more transitioning against first bit of next byte)
-			for (int c = 0; c < 8; c++)
+			uint8_t transitions = 0; 	//Verify this byte is a preamble: Counting the transitions from bit 1 to 0 (or viceversa)
+			for (int z = 0; z < 8; z++) //Count 8 transitions (7 for first byte and one more transitioning against first bit of next byte)
 			{
-				if (get_bit(c) != get_bit(c + 1))
-				{
+				if (get_bit(z) != get_bit(z + 1))
 					transitions++;
-				}
 			}
 
 			bool packet_detected = false;	
@@ -141,18 +138,18 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 				uint8_t crc[3];
 				uint8_t packet_header_arr[2];
 
-				//GET BT LE Access Address (4 bytes)
+				// GET ADVERTISING BT LE Access Address (4 bytes)
 				packet_addr_l = 0;				
 				for (int i = 0; i < 4; i++)
 				{
 					uint8_t byte = 0;
-					for (int c = 0; c < 8; c++) 
-						byte |= get_bit(8 + (i * 8) + c) << (7 - c);  //Access starts in rb_head + 8, 4 bytes
+					for (int z = 0; z < 8; z++) 
+						byte |= get_bit(8 + (i * 8) + z) << (7 - z);  //Access starts in rb_head + 8, 4 bytes
 
 					packet_addr_l |= ((uint64_t)SwapBits(byte)) << (8 * i);
 				}
 
-				//Only process advertizing packets (uses fixed pattern "0x8E89BED6")
+				// ADVERTISING PACKET (uses fixed pattern "0x8E89BED6")
 				if (packet_addr_l == 0x8E89BED6)
 				{
 					//Get PDU HEADER (2 bytes) First 4 msb bits determine the PDU type
@@ -162,36 +159,79 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 					for (int t = 0; t < 2; t++)
 					{
 						//uint8_t byte = 0;
-						for (int c = 0; c < 8; c++)
-							packet_header_arr[t] |=  get_bit(40 + (t * 8) + c) << (7 - c);  //PDU HEADER starts in rb_head + (8 * 5) (1 byte Preamble + 4 bytes Address, 40 bits)
+						for (int z = 0; z < 8; z++)
+							packet_header_arr[t] |=  get_bit(40 + (t * 8) + z) << (7 - z);  //PDU HEADER starts in rb_head + (8 * 5) (1 byte Preamble + 4 bytes Address, 40 bits)
 
 						//packet_header_arr[t] = byte;
 					}
 
 					BTLEWhiten(packet_header_arr, 2, 38); //Clear whitening on packet header. Advertising packets can be TXed thru channels 37, 38, 39
-					packet_length = SwapBits(packet_header_arr[1]); // & 0x3F;  //... So we can get the PAYLOAD LENGTH. This might be WRONG ? ble 5.x uses all 8 bits
+					packet_length = SwapBits(packet_header_arr[1]) & 0x3F;  //... So we can get the PAYLOAD LENGTH. This might be WRONG ? ble 5.x uses all 8 bits
 					
 					//PDU, PAYLOAD: Get the packet DATA 
 					for (int t = 0; t < packet_length + 2 + 3; t++) //3 bytes for CRC are just after the payload
 					{
-						uint8_t byte = 0;
-						for (int c = 0; c < 8; c++)
-							byte |= get_bit(40 + (t * 8) + c) << (7 - c); //Now get the whole PDU PAYLOAD
-
-						packet_data[t] = byte;
+						for (int z = 0; z < 8; z++)
+							packet_data[t] |= get_bit(40 + (t * 8) + z) << (7 - z); //Now get the whole PDU PAYLOAD
 					}
 
 					BTLEWhiten(packet_data, packet_length + 2 + 3, 38); //DATA UNWHITENING to entire PAYLOAD
 
+					//------------------------
+					//
+					// Problem: CRC does not check at any time
+					// and Bluetooth LE "MAC" address is wrong (garbage, always).
+					// I tried to skew bits forwards and backwards, re-chechking everything.
+					// Also tried to increment and decrement g_threshold by 10% steps
+					// Also tried changing packet_length from 6 to 250 recalculating CRC at each byte size ...
+					// With no luck.
+					//
+					//Its as if after the Advertising Address, the whole header / Payload PDU is "garbage"
+					//
+					//------------------------
+
+
+					// data_message.is_data = false;
+					// data_message.value = 'A';
+					// shared_memory.application_queue.push(data_message);
+
 					//CRC CALCULATION
 					crc[0] = crc[1] = crc[2] = 0x55; //ADvertisement packet checks into these values.
 					calced_crc = BTLECrc(packet_data, packet_length + 2, crc);
+
+
+					 unsigned char *bytes1 = reinterpret_cast<unsigned char*>(&calced_crc);
+
+					// for (int z = 0; z < 3; z++)
+					// {
+					// 	data_message.is_data = true;
+					// 	data_message.value = (bytes1[z]);
+					// 	shared_memory.application_queue.push(data_message);
+					// }
+
+
+
 					packet_crc = 0;
-					for (c = 0; c < 3; c++)
-						packet_crc = (packet_crc << 8) | packet_data[packet_length + 2 + c];
+					for (int z = 0; z < 3; z++)
+					{
+					// 	data_message.is_data = true;
+					// 	data_message.value = packet_data[packet_length + 2 + z];
+					// 	shared_memory.application_queue.push(data_message);
+
+					 	packet_crc = (packet_crc << 8) | packet_data[packet_length + 2 + z];
+					}
+
+					//  unsigned char *bytes2 = reinterpret_cast<unsigned char*>(&packet_crc);
+					// for (int z = 0; z < 3; z++)
+					// {
+					// 	data_message.is_data = true;
+					// 	data_message.value = (bytes2[z]);
+					// 	shared_memory.application_queue.push(data_message);
+					// }
+
 
 					//Confirmed adv packet thru CRC:
-					if (packet_crc == calced_crc){
+					//if (packet_crc == calced_crc){
 						//PDU - PAYLOAD DATA: bytes 2 to 7 of ADVERTISER PDU used for BLUETOOTH DEVICE ADDRESS (BDA) like MAC address, stored in "little endian", backwards
 						uint8_t mac_data[6];
 						for (int i = 7; i >=2; i--)
@@ -201,6 +241,8 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 						data_message.is_data = false;
 						data_message.value = 'A';
 						shared_memory.application_queue.push(data_message);
+
+
 
 						// for (int t = 2; t < packet_length + 2; t++)
 						// {
@@ -233,16 +275,16 @@ void BTLERxProcessor::execute(const buffer_c8_t &buffer)
 						data_message.value = mac_data[5];
 						shared_memory.application_queue.push(data_message);
 
-						data_message.is_data = true;
-						data_message.value = packet_length;
-						shared_memory.application_queue.push(data_message);
+						// data_message.is_data = true;
+						// data_message.value = packet_length;
+						// shared_memory.application_queue.push(data_message);
 
 						data_message.is_data = false;
 						data_message.value = 'B';
 						shared_memory.application_queue.push(data_message);
 
 						packet_detected = true;
-					}
+					//}
 
 				}
 				else
