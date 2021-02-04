@@ -503,7 +503,9 @@ size_t ScannerView::change_mode(uint8_t new_mod) { //Before this, do a scan_thre
 	using option_t = std::pair<std::string, int32_t>;
 	using options_t = std::vector<option_t>;
 	options_t bw;
-	field_bw.on_change = [this](size_t n, OptionsField::value_t) {	};
+	field_bw.on_change = [this](size_t n, OptionsField::value_t) { 
+		(void)n;  //avoid unused warning 
+	};
 
 	switch (new_mod) {
 	case NFM:	//bw 16k (2) default

@@ -33,20 +33,24 @@
 
  namespace ui
  {
-     #define SEARCH_SLICE_WIDTH	20000000 // Each slice bandwidth 20 MHz
+     #define LOOKING_GLASS_SLICE_WIDTH	20000000 // Each slice bandwidth 20 MHz
      #define MHZ_DIV	            1000000
      #define X2_MHZ_DIV	        2000000
 
      class GlassView : public View
      {
      public:
-         GlassView(NavigationView &nav);
+        GlassView(NavigationView &nav);
+
+        GlassView( const GlassView &);
+ 	    GlassView& operator=(const GlassView &nav);
+
          ~GlassView();
-         std::string title() const override { return "Looking Glass"; };
+        std::string title() const override { return "Looking Glass"; };
 
  	    void on_show() override;
  	    void on_hide() override;
-         void focus() override;
+        void focus() override;
 
      private:
      	NavigationView& nav_;
@@ -77,7 +81,7 @@
          rf::Frequency f_center { 0 };
          rf::Frequency f_center_ini { 0 };
          rf::Frequency marker_pixel_step { 0 };
-         rf::Frequency each_bin_size { SEARCH_SLICE_WIDTH  / 240 };
+         rf::Frequency each_bin_size { LOOKING_GLASS_SLICE_WIDTH  / 240 };
          rf::Frequency bins_Hz_size { 0 };
          uint8_t min_color_power { 0 };
          uint32_t pixel_index { 0 };

@@ -86,19 +86,18 @@ void TvCollector::feed(
 
 void TvCollector::post_message(const buffer_c16_t& data) {
 	// Called from baseband processing thread.
-        float re, im;
+    float re, im;
 	float mag;
-        float max;
 	if( streaming && !channel_spectrum_request_update ) {
-                for(size_t i=0; i<256; i++) 
+        for(size_t i=0; i<256; i++) 
 		{
-			const auto s = data.p[i];
-                        re = (float)(data.p[i].real());
+            re = (float)(data.p[i].real());
 			im = (float)(data.p[i].imag());
 			mag = __builtin_sqrtf((re * re) + (im * im)) ;
 			channel_spectrum[i] = {mag, mag};
 		}
-                channel_spectrum_sampling_rate = data.sampling_rate;
+
+        channel_spectrum_sampling_rate = data.sampling_rate;
 		channel_spectrum_request_update = true;
 		EventDispatcher::events_flag(EVT_MASK_SPECTRUM);
 	}
