@@ -34,6 +34,7 @@
 #include "ui_adsb_rx.hpp"
 #include "ui_adsb_tx.hpp"
 #include "ui_afsk_rx.hpp"
+#include "ui_aprs_rx.hpp"
 #include "ui_btle_rx.hpp"
 #include "ui_nrf_rx.hpp"
 #include "ui_aprs_tx.hpp"
@@ -394,6 +395,7 @@ ReceiversMenuView::ReceiversMenuView(NavigationView& nav) {
 		{ "POCSAG", 	ui::Color::green(),		&bitmap_icon_pocsag,	[&nav](){ nav.push<POCSAGAppView>(); } },
 		{ "Radiosnde", 	ui::Color::green(),		&bitmap_icon_sonde,		[&nav](){ nav.push<SondeView>(); } },
 		{ "TPMS Cars", 	ui::Color::green(),		&bitmap_icon_tpms,		[&nav](){ nav.push<TPMSAppView>(); } },
+		{ "APRS", 		ui::Color::green(),		&bitmap_icon_aprs,		[&nav](){ nav.push<APRSRXView>(); } }
 	});
 }
 
